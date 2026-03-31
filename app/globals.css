@@ -1,0 +1,131 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+  --background: 230 25% 6%; /* Deep obsidian blue layer */
+  --foreground: 210 40% 98%;
+  --card: 230 25% 10%;
+  --card-foreground: 210 40% 98%;
+  --primary: 160 84% 39%; /* Vibrant Neon Emerald/Teal */
+  --primary-foreground: 230 25% 6%;
+  --border: 230 25% 18%;
+  --ring: 160 84% 39%;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Outfit', sans-serif;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  min-height: 100vh;
+  /* Premium radial mesh background */
+  background-image: 
+    radial-gradient(circle at 15% 50%, hsla(var(--primary), 0.07) 0%, transparent 35%),
+    radial-gradient(circle at 85% 30%, hsla(260, 84%, 60%, 0.08) 0%, transparent 35%),
+    radial-gradient(circle at 50% 0%, hsla(var(--primary), 0.05) 0%, transparent 50%);
+  background-attachment: fixed;
+  overflow-x: hidden;
+}
+
+/* Glassmorphism Classes */
+.glass {
+  background: rgba(20, 25, 40, 0.4);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.glass:hover {
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 20px hsla(var(--primary), 0.08);
+  transform: translateY(-2px);
+}
+
+/* Base Typography Elements */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+p {
+  line-height: 1.6;
+}
+
+/* Custom Standardized Inputs */
+input, select, textarea {
+  font-family: 'Outfit', sans-serif;
+  transition: all 0.3s ease;
+  caret-color: hsl(var(--primary));
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: hsl(var(--primary)) !important;
+  box-shadow: 0 0 0 3px hsla(var(--primary), 0.2) !important;
+}
+
+/* Custom Premium Desktop Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: hsl(var(--background)); 
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border)); 
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsla(var(--primary), 0.5); 
+}
+
+/* Global Tooltip Classes (Recharts Override) */
+.recharts-tooltip-wrapper {
+  outline: none !important;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(15px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes pulse-glow {
+  0% { box-shadow: 0 0 0 0 hsla(var(--primary), 0.6); }
+  70% { box-shadow: 0 0 0 8px hsla(var(--primary), 0); }
+  100% { box-shadow: 0 0 0 0 hsla(var(--primary), 0); }
+}
+
+/* Buttons */
+.btn-primary {
+  padding: 0.875rem 1.75rem;
+  border-radius: 0.5rem;
+  background: linear-gradient(135deg, hsl(var(--primary)) 0%, #10b981 100%);
+  color: hsl(var(--primary-foreground));
+  border: none;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 20px -3px hsla(var(--primary), 0.5);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px -4px hsla(var(--primary), 0.6);
+}
+
+.btn-primary:active {
+  transform: translateY(1px);
+  box-shadow: 0 2px 10px -2px hsla(var(--primary), 0.5);
+}
