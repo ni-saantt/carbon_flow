@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || '', 
+  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
 
@@ -15,7 +15,7 @@ export async function GET(request) {
     // Fetch users via service role to securely bypass SELECT RLS
     const { data: users, error } = await supabaseAdmin.from('users').select('*').eq('organization_id', orgId);
     if (error) throw error;
-    
+
     return new Response(JSON.stringify({ users }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   } catch (error) {
     return new Response(JSON.stringify({ error: error.message }), { status: 500 });
@@ -28,7 +28,7 @@ export async function PUT(request) {
 
     // Verify requester is Administrator
     const { data: reqUser } = await supabaseAdmin.from('users').select('role, organization_id').eq('id', requesterId).single();
-    
+
     if (reqUser?.role !== 'Administrator') {
       return new Response(JSON.stringify({ error: 'Unauthorized. Only Administrators can change roles.' }), { status: 403 });
     }

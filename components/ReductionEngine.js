@@ -33,58 +33,47 @@ export default function ReductionEngine({ stats }) {
   };
 
   return (
-    <div className="glass animate-fade-in" style={{ padding: '2.5rem', borderRadius: '1rem', borderTop: '4px solid #8b5cf6', marginTop: '2rem' }}>
+    <div className="glass animate-fade-in" style={{ padding: '2.5rem', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <div>
-          <h3 style={{ fontSize: '1.5rem', margin: '0 0 0.5rem 0', fontWeight: 600, color: '#a78bfa' }}>✨ AI Sustainability Strategist</h3>
-          <p style={{ opacity: 0.8, fontSize: '0.9rem', margin: 0, maxWidth: '600px' }}>
-            Harness live Large Language Models (LLMs) to analyze your dynamic footprint breakdown and generate a corporate-grade reduction strategy.
+          <h3 style={{ fontSize: '1.25rem', margin: '0 0 0.5rem 0', fontWeight: 800, color: '#111827' }}>✨ AI Sustainability Strategist</h3>
+          <p style={{ opacity: 0.8, fontSize: '0.9rem', margin: 0, maxWidth: '600px', color: '#4b5563', fontWeight: 500 }}>
+            Harness live Large Language Models to analyze your exact footprint composition and generate a corporate-grade, actionable reduction blueprint.
           </p>
         </div>
         <button 
           onClick={generateReport}
           disabled={loading || stats.total === 0}
-          style={{ 
-            padding: '0.85rem 1.75rem', 
-            background: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)', 
-            color: 'white', 
-            border: 'none', 
-            borderRadius: '0.5rem', 
-            fontWeight: 600, 
-            cursor: loading || stats.total === 0 ? 'not-allowed' : 'pointer', 
-            boxShadow: '0 4px 15px -5px rgba(139, 92, 246, 0.6)',
-            transition: 'transform 0.2s, opacity 0.2s',
-            opacity: loading || stats.total === 0 ? 0.6 : 1
-          }}
-          onMouseOver={e => { if (!loading && stats.total > 0) e.target.style.transform = 'translateY(-2px)' }}
-          onMouseOut={e => e.target.style.transform = 'translateY(0)'}
+          className="btn-primary"
+          style={{ opacity: loading || stats.total === 0 ? 0.6 : 1 }}
         >
           {loading ? 'Analyzing Carbon Data...' : 'Generate Real AI Report'}
         </button>
       </div>
 
       {error && (
-        <div className="animate-fade-in" style={{ padding: '1.25rem', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '0.5rem', marginBottom: '1.5rem', fontWeight: 500 }}>
+        <div className="animate-fade-in" style={{ padding: '1.25rem', background: 'rgba(239, 68, 68, 0.05)', color: '#b91c1c', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '0.75rem', marginBottom: '1.5rem', fontWeight: 600, fontSize: '0.9rem' }}>
           {error}
         </div>
       )}
 
       {aiResponse ? (
         <div className="animate-fade-in" style={{ 
-          background: 'rgba(255,255,255,0.02)', 
+          background: 'hsl(var(--background))', 
           padding: '2.5rem', 
-          borderRadius: '0.75rem', 
-          border: '1px solid rgba(139, 92, 246, 0.3)', 
+          borderRadius: '1rem', 
+          border: '1px solid hsl(var(--border))', 
           lineHeight: 1.8,
-          fontSize: '1.05rem',
-          color: 'rgba(255,255,255,0.95)'
+          fontSize: '1rem',
+          color: '#1f2937',
+          fontWeight: 500
         }}>
           {aiResponse.split('\n').filter(line => line.trim() !== '').map((line, i) => (
             <p key={i} style={{ margin: '0 0 1.25rem 0' }}>{line}</p>
           ))}
         </div>
       ) : (
-        <div style={{ padding: '3.5rem', textAlign: 'center', opacity: 0.4, border: '2px dashed var(--border)', borderRadius: '0.75rem' }}>
+        <div style={{ padding: '3.5rem', textAlign: 'center', color: '#9ca3af', border: '2px dashed hsl(var(--border))', borderRadius: '1rem', fontWeight: 500 }}>
           {stats.total > 0 
             ? 'Click the button above to securely pass your timeline metrics to the AI reasoning engine.' 
             : 'Log some activity data to unlock the AI Analysis engine.'}
