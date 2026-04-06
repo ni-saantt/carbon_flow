@@ -5,13 +5,14 @@ import { supabase } from '@/utils/supabaseClient';
 export default function DataEntry() {
   const [factors, setFactors] = useState([]);
   const [selectedFactorId, setSelectedFactorId] = useState('');
+  const [offsetFactors, setOffsetFactors] = useState([]);
+  const [selectedOffsetFactorId, setSelectedOffsetFactorId] = useState('');
   const [quantity, setQuantity] = useState('');
   const [dateLogged, setDateLogged] = useState('');
   const [userOrgId, setUserOrgId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [formType, setFormType] = useState('activity'); // 'activity' or 'offset'
-  const [offsetType, setOffsetType] = useState('Reforestation');
   
   // Conflicting duplicate records state
   const [duplicateWarning, setDuplicateWarning] = useState(null);
@@ -32,12 +33,22 @@ export default function DataEntry() {
         setFactors(factorList);
         setSelectedFactorId(factorList[0]?.id || '');
       }
+
+      const { data: offsetFactorList } = await supabase.from('offset_factors').select('*');
+      if (offsetFactorList) {
+        setOffsetFactors(offsetFactorList);
+        setSelectedOffsetFactorId(offsetFactorList[0]?.id || '');
+      }
     };
     fetchContext();
   }, []);
 
   const activeFactor = factors.find(f => f.id === selectedFactorId);
-  const previewEmission = activeFactor && quantity ? (parseFloat(quantity) * activeFactor.factor_value).toFixed(2) : 0;
+  const activeOffsetFactor = offsetFactors.find(f => f.id === selectedOffsetFactorId);
+  
+  const previewValue = formType === 'activity' 
+    ? (activeFactor && quantity ? (parseFloat(quantity) * activeFactor.factor_value).toFixed(2) : 0)
+    : (activeOffsetFactor && quantity ? (parseFloat(quantity) * activeOffsetFactor.factor_value).toFixed(2) : 0);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -51,18 +62,34 @@ export default function DataEntry() {
       return;
     }
 
-    // Step 1: Duplicate validation check
-    const { data: existingLogs } = await supabase
-      .from('activity_data')
-      .select('id, quantity')
-      .eq('organization_id', userOrgId)
-      .eq('emission_factor_id', selectedFactorId)
-      .eq('date_logged', dateLogged);
+    // Step 1: Duplicate validation check (Only for Activities)
+    if (formType === 'activity') {
+      const { data: existingLogs } = await supabase
+        .from('activity_data')
+        .select('id, quantity')
+        .eq('organization_id', userOrgId)
+        .eq('emission_factor_id', selectedFactorId)
+        .eq('date_logged', dateLogged);
 
-    if (existingLogs && existingLogs.length > 0) {
-      setDuplicateWarning(existingLogs);
-      setLoading(false);
-      return; // Wait for user decision
+      if (existingLogs && existingLogs.length > 0) {
+        setDuplicateWarning(existingLogs);
+        setLoading(false);
+        return; // Wait for user decision
+      }
+    } else {
+      // Step 2: Duplicate validation check for Offsets
+      const { data: existingOffsets } = await supabase
+        .from('offsets')
+        .select('id, amount')
+        .eq('organization_id', userOrgId)
+        .eq('type', activeOffsetFactor?.category)
+        .eq('date_logged', dateLogged);
+
+      if (existingOffsets && existingOffsets.length > 0) {
+        setDuplicateWarning(existingOffsets.map(o => ({ ...o, quantity: o.amount }))); // Normalize key for resolution logic
+        setLoading(false);
+        return;
+      }
     }
 
     // If perfectly clean, insert
@@ -101,15 +128,15 @@ export default function DataEntry() {
     const { error } = await supabase.from('offsets').insert([{
       organization_id: userOrgId,
       user_id: session.user.id,
-      type: offsetType,
-      amount: parseFloat(quantity), // reusing the quantity numeric field
+      type: activeOffsetFactor?.category || 'Unknown',
+      amount: parseFloat(previewValue), // The calculated CO2e value
       date_logged: dateLogged
     }]);
 
     if (error) {
       setMessage(`Error: ${error.message}`);
     } else {
-      setMessage(`Success! Carbon offset of ${quantity}kg logged under ${offsetType}.`);
+      setMessage(`Success! Carbon offset of ${previewValue}kg logged under ${activeOffsetFactor?.category}.`);
       setQuantity('');
     }
     setLoading(false);
@@ -118,29 +145,34 @@ export default function DataEntry() {
   const handleOverwrite = async () => {
     setLoading(true);
     const idsToDelete = duplicateWarning.map(l => l.id);
-    await supabase.from('activity_data').delete().in('id', idsToDelete);
+    const table = formType === 'activity' ? 'activity_data' : 'offsets';
+    await supabase.from(table).delete().in('id', idsToDelete);
     
-    await executeInsert();
+    if (formType === 'activity') await executeInsert();
+    else await executeOffsetInsert();
     setDuplicateWarning(null);
   };
 
   const handleAddOn = async () => {
     setLoading(true);
+    const table = formType === 'activity' ? 'activity_data' : 'offsets';
+    const amountKey = formType === 'activity' ? 'quantity' : 'amount';
+    
     // Take the first existing log and add our new quantity to it
     const targetLog = duplicateWarning[0];
-    const newQuantity = Number(targetLog.quantity) + Number(quantity);
+    const newQuantity = Number(targetLog.quantity) + Number(previewValue);
     
-    const { error } = await supabase.from('activity_data').update({ quantity: newQuantity }).eq('id', targetLog.id);
+    const { error } = await supabase.from(table).update({ [amountKey]: newQuantity }).eq('id', targetLog.id);
     
     if (error) {
       setMessage(`Error: ${error.message}`);
     } else {
-      // If there were other random duplicates for the same day, clean them up to sanitize DB
+      // Clean up extras
       if (duplicateWarning.length > 1) {
         const extraIds = duplicateWarning.slice(1).map(l => l.id);
-        await supabase.from('activity_data').delete().in('id', extraIds);
+        await supabase.from(table).delete().in('id', extraIds);
       }
-      setMessage(`Success! Added ${quantity} to the existing record for a total of ${newQuantity}.`);
+      setMessage(`Success! Added ${previewValue} to the existing record for a total of ${newQuantity}.`);
       setQuantity('');
     }
     setDuplicateWarning(null);
@@ -160,8 +192,8 @@ export default function DataEntry() {
           <div className="animate-fade-in" style={{ padding: '1.5rem', background: 'rgba(255,165,0,0.1)', borderRadius: '0.75rem', border: '1px solid rgba(255,165,0,0.3)', marginBottom: '2rem' }}>
             <h4 style={{ margin: '0 0 0.5rem 0', color: '#ffb700', fontSize: '1.1rem' }}>⚠️ Existing Record Found</h4>
             <p style={{ margin: '0 0 1.25rem 0', fontSize: '0.9rem', opacity: 0.9, lineHeight: 1.5 }}>
-              You have already logged data for <strong>{activeFactor?.category}</strong> on <strong>{dateLogged}</strong>. <br/>
-              What would you like to do with this new {quantity} {activeFactor?.unit} entry?
+              You have already logged data for <strong>{formType === 'activity' ? activeFactor?.category : activeOffsetFactor?.category}</strong> on <strong>{dateLogged}</strong>. <br/>
+              What would you like to do with this new {previewValue} {formType === 'activity' ? activeFactor?.unit : activeOffsetFactor?.unit} entry?
             </p>
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
               <button onClick={handleOverwrite} type="button" style={{ padding: '0.75rem 1.25rem', background: '#ffb700', color: 'black', border: 'none', borderRadius: '0.5rem', fontWeight: 600, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseOver={e => e.target.style.opacity = 0.8} onMouseOut={e => e.target.style.opacity = 1}>
@@ -213,15 +245,14 @@ export default function DataEntry() {
                 </select>
               ) : (
                 <select 
-                  value={offsetType} 
-                  onChange={(e) => setOffsetType(e.target.value)}
+                  value={selectedOffsetFactorId} 
+                  onChange={(e) => setSelectedOffsetFactorId(e.target.value)}
                   style={{ padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'transparent', color: 'inherit', outline: 'none' }}
                   required
                 >
-                  <option value="Reforestation" style={{ color: 'hsl(var(--foreground))', background: 'hsl(var(--background))' }}>Reforestation</option>
-                  <option value="Solar Project" style={{ color: 'hsl(var(--foreground))', background: 'hsl(var(--background))' }}>Solar Infrastructure</option>
-                  <option value="Wind Credits" style={{ color: 'hsl(var(--foreground))', background: 'hsl(var(--background))' }}>Verified Wind Credits</option>
-                  <option value="Direct Air Capture" style={{ color: 'hsl(var(--foreground))', background: 'hsl(var(--background))' }}>Direct Air Capture (DAC)</option>
+                  {offsetFactors.map(f => (
+                    <option key={f.id} value={f.id} style={{ color: 'hsl(var(--foreground))', background: 'hsl(var(--background))' }}>{f.category} ({f.unit})</option>
+                  ))}
                 </select>
               )}
             </div>
@@ -239,29 +270,27 @@ export default function DataEntry() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <label style={{ fontSize: '0.875rem', fontWeight: 500 }}>{formType === 'activity' ? `Quantity (${activeFactor?.unit || 'units'})` : 'Amount (kg CO2e Offset)'}</label>
+            <label style={{ fontSize: '0.875rem', fontWeight: 500 }}>{formType === 'activity' ? `Quantity (${activeFactor?.unit || 'units'})` : `Quantity (${activeOffsetFactor?.unit || 'units'})`}</label>
             <input 
               type="number" 
               step="0.01"
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
-              placeholder={formType === 'activity' ? "e.g. 150.5" : "e.g. 500.0"}
+              placeholder="e.g. 100"
               style={{ padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'transparent', color: 'inherit', outline: 'none' }}
               required
             />
           </div>
 
-          {formType === 'activity' && (
-            <div style={{ padding: '1.5rem', background: 'hsla(var(--primary), 0.1)', borderRadius: '0.5rem', border: '1px dashed hsl(var(--primary))' }}>
-              <h4 style={{ margin: '0 0 0.5rem 0', opacity: 0.8 }}>Live Preview Emission</h4>
-              <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: 'hsl(var(--primary))' }}>
-                {previewEmission} <span style={{ fontSize: '1rem', fontWeight: 'normal', opacity: 0.8 }}>kg CO₂e</span>
-              </div>
-              <p style={{ margin: 0, fontSize: '0.875rem', opacity: 0.7 }}>
-                Formula: {quantity || '0'} × {activeFactor?.factor_value || '0'}
-              </p>
+          <div style={{ padding: '1.5rem', background: 'hsla(var(--primary), 0.1)', borderRadius: '0.5rem', border: '1px dashed hsl(var(--primary))' }}>
+            <h4 style={{ margin: '0 0 0.5rem 0', opacity: 0.8 }}>Live Preview {formType === 'activity' ? 'Emission' : 'Offset'}</h4>
+            <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: 'hsl(var(--primary))' }}>
+              {previewValue} <span style={{ fontSize: '1rem', fontWeight: 'normal', opacity: 0.8 }}>kg CO₂e</span>
             </div>
-          )}
+            <p style={{ margin: 0, fontSize: '0.875rem', opacity: 0.7 }}>
+              Formula: {quantity || '0'} × {formType === 'activity' ? activeFactor?.factor_value || '0' : activeOffsetFactor?.factor_value || '0'}
+            </p>
+          </div>
 
           {message && (
             <div style={{ padding: '1rem', borderRadius: '0.5rem', background: message.includes('Error') ? 'rgba(255,100,100,0.1)' : 'rgba(100,255,100,0.1)', color: message.includes('Error') ? '#ff6b6b' : '#51cf66' }}>
