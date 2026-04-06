@@ -17,11 +17,12 @@ export default function Dashboard() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [rawLogs, setRawLogs] = useState([]);
+  const [offsetLogs, setOffsetLogs] = useState([]);
   const [timeRange, setTimeRange] = useState('6M');
   const [chartData, setChartData] = useState([]);
   const [pieData, setPieData] = useState([]);
   const [uniqueCategories, setUniqueCategories] = useState([]);
-  const [stats, setStats] = useState({ total: 0, topCategory: 'N/A', topPercentage: 0, count: 0 });
+  const [stats, setStats] = useState({ total: 0, offsetTotal: 0, topCategory: 'N/A', topPercentage: 0, count: 0 });
   const [role, setRole] = useState('Member');
   const router = useRouter();
 
@@ -37,18 +38,26 @@ export default function Dashboard() {
       const { data: userData } = await supabase.from('users').select('organization_id, role').eq('id', session.user.id).single();
       if (userData?.role) setRole(userData.role);
       
-      if (userData?.organization_id) {
-        const { data: logs } = await supabase
-          .from('activity_data')
-          .select(`carbon_emission, date_logged, emission_factors(category)`)
-          .eq('organization_id', userData.organization_id);
+        if (userData?.organization_id) {
+          const { data: logs } = await supabase
+            .from('activity_data')
+            .select(`carbon_emission, date_logged, emission_factors(category)`)
+            .eq('organization_id', userData.organization_id);
 
-        if (logs) {
-          setRawLogs(logs);
-          const cats = [...new Set(logs.map(l => l.emission_factors?.category || 'Unknown'))];
-          setUniqueCategories(cats);
+          const { data: offsets } = await supabase
+            .from('offsets')
+            .select(`amount, date_logged`)
+            .eq('organization_id', userData.organization_id);
+
+          if (logs) {
+            setRawLogs(logs);
+            const cats = [...new Set(logs.map(l => l.emission_factors?.category || 'Unknown'))];
+            setUniqueCategories(cats);
+          }
+          if (offsets) {
+            setOffsetLogs(offsets);
+          }
         }
-      }
       setLoading(false);
     };
     fetchDashboardData();
@@ -69,8 +78,13 @@ export default function Dashboard() {
       ? rawLogs.filter(log => new Date(log.date_logged) >= cutoff)
       : rawLogs;
 
+    const filteredOffsets = timeRange !== 'All'
+      ? offsetLogs.filter(off => new Date(off.date_logged) >= cutoff)
+      : offsetLogs;
+
     // KPI Calc
     const total = filteredLogs.reduce((acc, log) => acc + (log.carbon_emission || 0), 0);
+    const offsetTotal = filteredOffsets.reduce((acc, off) => acc + (Number(off.amount) || 0), 0);
     const categoryTotals = filteredLogs.reduce((acc, log) => {
       const cat = log.emission_factors?.category || 'Unknown';
       acc[cat] = (acc[cat] || 0) + (log.carbon_emission || 0);
@@ -84,6 +98,7 @@ export default function Dashboard() {
     
     setStats({
       total,
+      offsetTotal,
       topCategory: topCat,
       topPercentage: total > 0 ? Math.round((topVal / total) * 100) : 0,
       count: filteredLogs.length,
@@ -108,7 +123,9 @@ export default function Dashboard() {
       for (let i = daysCount - 1; i >= 0; i--) {
         const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
         const name = d.toLocaleDateString('default', { month: 'short', day: 'numeric' });
-        localChart.push({ name, rawDate: d.toISOString().split('T')[0], ...baseZeros });
+        // Use local day representation for the key instead of UTC .toISOString()
+        const rawDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        localChart.push({ name, rawDate, ...baseZeros });
       }
     } else {
       const monthsCount = timeRange === '3M' ? 3 : timeRange === '6M' ? 6 : 12;
@@ -121,10 +138,12 @@ export default function Dashboard() {
     }
     
     filteredLogs.forEach(log => {
-      const d = new Date(log.date_logged);
+      // Parse the date properly without assuming UTC shift
+      // For simple DATE strings, we can split them instead of using new Date() which can shift
+      const parts = log.date_logged.split('-');
       const logRawDate = isDaySlices 
-        ? d.toISOString().split('T')[0]
-        : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        ? log.date_logged // Use exact string from DB (YYYY-MM-DD)
+        : `${parts[0]}-${parts[1]}`;
         
       const cat = log.emission_factors?.category || 'Unknown';
       const point = localChart.find(p => p.rawDate === logRawDate);
@@ -137,7 +156,7 @@ export default function Dashboard() {
       return clean;
     }));
     
-  }, [rawLogs, timeRange, uniqueCategories]);
+  }, [rawLogs, offsetLogs, timeRange, uniqueCategories]);
 
   if (loading) return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading dashboard...</div>;
   if (!user) return null;
@@ -333,7 +352,7 @@ export default function Dashboard() {
             <div style={{ width: '180px', height: '180px' }}>
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={[{value: stats.total || 1, fill: '#15803d'}, {value: (stats.total || 1) * 0.11, fill: '#c4f03a'}]} innerRadius={60} outerRadius={85} paddingAngle={4} dataKey="value" stroke="none">
+                  <Pie data={[{value: stats.total || 1, fill: '#15803d'}, {value: stats.offsetTotal || 0, fill: '#c4f03a'}]} innerRadius={60} outerRadius={85} paddingAngle={4} dataKey="value" stroke="none">
                     <Cell fill="#15803d" />
                     <Cell fill="#c4f03a" />
                   </Pie>
@@ -354,7 +373,7 @@ export default function Dashboard() {
                     <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#c4f03a' }}></div>
                     <span style={{ fontSize: '0.75rem', color: '#4b5563', fontWeight: 700, textTransform: 'uppercase' }}>Offset</span>
                   </div>
-                  <p style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, color: '#111827', letterSpacing: '-0.02em' }}>{Math.round(stats.total * 0.11).toLocaleString()} <span style={{fontSize: '1rem', color: '#6b7280', fontWeight: 500}}>Tonnes</span></p>
+                  <p style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, color: '#111827', letterSpacing: '-0.02em' }}>{stats.offsetTotal.toLocaleString()} <span style={{fontSize: '1rem', color: '#6b7280', fontWeight: 500}}>Tonnes</span></p>
               </div>
             </div>
           </div>

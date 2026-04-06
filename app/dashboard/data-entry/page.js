@@ -10,6 +10,8 @@ export default function DataEntry() {
   const [userOrgId, setUserOrgId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [formType, setFormType] = useState('activity'); // 'activity' or 'offset'
+  const [offsetType, setOffsetType] = useState('Reforestation');
   
   // Conflicting duplicate records state
   const [duplicateWarning, setDuplicateWarning] = useState(null);
@@ -64,7 +66,11 @@ export default function DataEntry() {
     }
 
     // If perfectly clean, insert
-    await executeInsert();
+    if (formType === 'activity') {
+      await executeInsert();
+    } else {
+      await executeOffsetInsert();
+    }
   };
 
   const executeInsert = async () => {
@@ -83,6 +89,27 @@ export default function DataEntry() {
       setMessage(`Error: ${error.message}`);
     } else {
       setMessage('Success! Log seamlessly recorded and emissions tracked.');
+      setQuantity('');
+    }
+    setLoading(false);
+  };
+
+  const executeOffsetInsert = async () => {
+    setLoading(true);
+    const { data: { session } } = await supabase.auth.getSession();
+
+    const { error } = await supabase.from('offsets').insert([{
+      organization_id: userOrgId,
+      user_id: session.user.id,
+      type: offsetType,
+      amount: parseFloat(quantity), // reusing the quantity numeric field
+      date_logged: dateLogged
+    }]);
+
+    if (error) {
+      setMessage(`Error: ${error.message}`);
+    } else {
+      setMessage(`Success! Carbon offset of ${quantity}kg logged under ${offsetType}.`);
       setQuantity('');
     }
     setLoading(false);
@@ -150,21 +177,53 @@ export default function DataEntry() {
           </div>
         )}
 
+        {/* Tab Toggle */}
+        <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', borderBottom: '1px solid var(--border)', paddingBottom: '1rem' }}>
+          <button 
+            type="button" 
+            onClick={() => { setFormType('activity'); setMessage(''); }}
+            style={{ padding: '0.5rem 1rem', background: formType === 'activity' ? 'hsl(var(--primary))' : 'transparent', color: formType === 'activity' ? 'white' : 'inherit', border: '1px solid hsl(var(--primary))', borderRadius: '2rem', fontWeight: 600, cursor: 'pointer' }}
+          >
+            Emit Activities
+          </button>
+          <button 
+            type="button" 
+            onClick={() => { setFormType('offset'); setMessage(''); }}
+            style={{ padding: '0.5rem 1rem', background: formType === 'offset' ? 'hsl(var(--primary))' : 'transparent', color: formType === 'offset' ? 'white' : 'inherit', border: '1px solid hsl(var(--primary))', borderRadius: '2rem', fontWeight: 600, cursor: 'pointer' }}
+          >
+            Log Offsets
+          </button>
+        </div>
+
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', opacity: duplicateWarning ? 0.3 : 1, pointerEvents: duplicateWarning ? 'none' : 'auto', transition: 'opacity 0.3s' }}>
           
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <label style={{ fontSize: '0.875rem', fontWeight: 500 }}>Activity Category</label>
-              <select 
-                value={selectedFactorId} 
-                onChange={(e) => setSelectedFactorId(e.target.value)}
-                style={{ padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'transparent', color: 'inherit', outline: 'none' }}
-                required
-              >
-                {factors.map(f => (
-                  <option key={f.id} value={f.id} style={{ color: 'hsl(var(--foreground))', background: 'hsl(var(--background))' }}>{f.category} ({f.unit})</option>
-                ))}
-              </select>
+              <label style={{ fontSize: '0.875rem', fontWeight: 500 }}>{formType === 'activity' ? 'Activity Category' : 'Offset Type'}</label>
+              {formType === 'activity' ? (
+                <select 
+                  value={selectedFactorId} 
+                  onChange={(e) => setSelectedFactorId(e.target.value)}
+                  style={{ padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'transparent', color: 'inherit', outline: 'none' }}
+                  required
+                >
+                  {factors.map(f => (
+                    <option key={f.id} value={f.id} style={{ color: 'hsl(var(--foreground))', background: 'hsl(var(--background))' }}>{f.category} ({f.unit})</option>
+                  ))}
+                </select>
+              ) : (
+                <select 
+                  value={offsetType} 
+                  onChange={(e) => setOffsetType(e.target.value)}
+                  style={{ padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'transparent', color: 'inherit', outline: 'none' }}
+                  required
+                >
+                  <option value="Reforestation" style={{ color: 'hsl(var(--foreground))', background: 'hsl(var(--background))' }}>Reforestation</option>
+                  <option value="Solar Project" style={{ color: 'hsl(var(--foreground))', background: 'hsl(var(--background))' }}>Solar Infrastructure</option>
+                  <option value="Wind Credits" style={{ color: 'hsl(var(--foreground))', background: 'hsl(var(--background))' }}>Verified Wind Credits</option>
+                  <option value="Direct Air Capture" style={{ color: 'hsl(var(--foreground))', background: 'hsl(var(--background))' }}>Direct Air Capture (DAC)</option>
+                </select>
+              )}
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -180,27 +239,29 @@ export default function DataEntry() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <label style={{ fontSize: '0.875rem', fontWeight: 500 }}>Quantity ({activeFactor?.unit || 'units'})</label>
+            <label style={{ fontSize: '0.875rem', fontWeight: 500 }}>{formType === 'activity' ? `Quantity (${activeFactor?.unit || 'units'})` : 'Amount (kg CO2e Offset)'}</label>
             <input 
               type="number" 
               step="0.01"
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
-              placeholder="e.g. 150.5"
+              placeholder={formType === 'activity' ? "e.g. 150.5" : "e.g. 500.0"}
               style={{ padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'transparent', color: 'inherit', outline: 'none' }}
               required
             />
           </div>
 
-          <div style={{ padding: '1.5rem', background: 'hsla(var(--primary), 0.1)', borderRadius: '0.5rem', border: '1px dashed hsl(var(--primary))' }}>
-            <h4 style={{ margin: '0 0 0.5rem 0', opacity: 0.8 }}>Live Preview Emission</h4>
-            <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: 'hsl(var(--primary))' }}>
-              {previewEmission} <span style={{ fontSize: '1rem', fontWeight: 'normal', opacity: 0.8 }}>kg CO₂e</span>
+          {formType === 'activity' && (
+            <div style={{ padding: '1.5rem', background: 'hsla(var(--primary), 0.1)', borderRadius: '0.5rem', border: '1px dashed hsl(var(--primary))' }}>
+              <h4 style={{ margin: '0 0 0.5rem 0', opacity: 0.8 }}>Live Preview Emission</h4>
+              <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: 'hsl(var(--primary))' }}>
+                {previewEmission} <span style={{ fontSize: '1rem', fontWeight: 'normal', opacity: 0.8 }}>kg CO₂e</span>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.875rem', opacity: 0.7 }}>
+                Formula: {quantity || '0'} × {activeFactor?.factor_value || '0'}
+              </p>
             </div>
-            <p style={{ margin: 0, fontSize: '0.875rem', opacity: 0.7 }}>
-              Formula: {quantity || '0'} × {activeFactor?.factor_value || '0'}
-            </p>
-          </div>
+          )}
 
           {message && (
             <div style={{ padding: '1rem', borderRadius: '0.5rem', background: message.includes('Error') ? 'rgba(255,100,100,0.1)' : 'rgba(100,255,100,0.1)', color: message.includes('Error') ? '#ff6b6b' : '#51cf66' }}>
@@ -210,11 +271,11 @@ export default function DataEntry() {
 
           <button 
             type="submit" 
-            disabled={loading || !factors.length}
+            disabled={loading || (formType === 'activity' && !factors.length)}
             style={{ padding: '1rem', borderRadius: '0.5rem', background: 'hsl(var(--primary))', color: 'white', border: 'none', fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', fontSize: '1rem', transition: 'opacity 0.2s' }}
             onMouseOver={e => e.target.style.opacity = 0.9} onMouseOut={e => e.target.style.opacity = 1}
           >
-            {loading ? 'Processing...' : 'Log Activity'}
+            {loading ? 'Processing...' : (formType === 'activity' ? 'Log Activity' : 'Record Offset')}
           </button>
         </form>
       </div>
